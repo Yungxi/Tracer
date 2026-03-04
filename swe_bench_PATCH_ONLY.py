@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
 """
-SWE-bench Integration - Blind bug detection and patching.
+SWE-bench PATCH ONLY - Direct patching using problem description.
 
 Uses the OFFICIAL SWE-bench harness for evaluation.
+
+This script patches code directly using the SWE-bench problem description,
+without blind bug detection. Used as a baseline comparison.
 
 Flow:
 1. Load SWE-bench instances
 2. For each instance:
    a. Clone repo and read affected files
-   b. Run TRACER to find bugs (without seeing problem description)
-   c. Send tracer's error to PATCHER
-   d. Generate patch in unified diff format
+   b. Send problem description + code to patcher
+   c. Generate patch in unified diff format
 3. Save predictions in official format
 4. Run official SWE-bench harness for verification
 
 Usage:
-    python swe_bench.py --list                    # List available instances
-    python swe_bench.py --instance <id>           # Run on specific instance
-    python swe_bench.py --run-dev                 # Run on dev split
-    python swe_bench.py --verify                  # Run harness verification
+    python swe_bench_PATCH_ONLY.py --list                    # List available instances
+    python swe_bench_PATCH_ONLY.py --instance <id>           # Run on specific instance
+    python swe_bench_PATCH_ONLY.py --run-test                # Run on test split
+    python swe_bench_PATCH_ONLY.py --verify                  # Run harness verification
 """
 
 import argparse
@@ -55,12 +57,11 @@ from patcher import LLMPatcher
 # CONFIGURATION
 # =============================================================================
 OPENAI_API_KEY = ""  # Set your API key here or use --api-key flag
-WORKSPACE_DIR = "/tmp/swe_bench_workspace"
-PREDICTIONS_FILE = "predictions.json"  # Official format for harness
-ERROR_PRED_FILE = "error_pred.json"
-RESULTS_FILE = "results.json"
-LOG_DIR = "/tmp/swe_bench_logs"
-MODEL_NAME = "tracer-blind"
+WORKSPACE_DIR = "/tmp/swe_bench_patch_only"
+PREDICTIONS_FILE = "PATCH_ONLY_predictions.json"  # Official format for harness
+RESULTS_FILE = "PATCH_ONLY_results.json"
+LOG_DIR = "/tmp/swe_bench_patch_only_logs"
+MODEL_NAME = "patcher-direct"
 # =============================================================================
 
 
@@ -81,27 +82,6 @@ class SWEBenchInstance:
 
 
 @dataclass
-class TracerPrediction:
-    """What tracer thinks the bug is."""
-    predicted_error: str
-    affected_files: List[str]
-    confidence: float
-    code_snippet: str
-
-
-@dataclass
-class ErrorPrediction:
-    """Comparison of tracer's prediction vs actual problem."""
-    instance_id: str
-    tracer_prediction: str
-    actual_problem: str
-    files_analyzed: List[str]
-    is_same_bug: bool = False
-    similarity_score: float = 0.0
-    comparison_explanation: str = ""
-
-
-@dataclass
 class PatchPrediction:
     """Official SWE-bench prediction format."""
     instance_id: str
@@ -110,177 +90,14 @@ class PatchPrediction:
 
 
 @dataclass
-class EvaluationResult:
-    """Full evaluation result."""
+class PatchOnlyResult:
+    """Result of patch-only evaluation."""
     instance_id: str
     repo: str
-    tracer_found_bug: bool
-    tracer_prediction: Optional[TracerPrediction]
     patch_generated: bool
     generated_patch: Optional[str]
-    harness_result: Optional[str] = None  # From official harness
+    harness_result: Optional[str] = None
     error: Optional[str] = None
-
-
-class BugAnalyzer:
-    """Uses LLM to analyze code and find bugs (like tracer but for static analysis)."""
-
-    SYSTEM_PROMPT = """You are a code bug detector. Analyze the given code and identify any bugs, errors, or issues.
-
-You should look for:
-1. Logic errors
-2. Off-by-one errors
-3. Incorrect return values
-4. Missing edge case handling
-5. Type errors
-6. Incorrect conditionals
-7. Resource leaks
-8. Concurrency issues
-
-Respond with a JSON object:
-{
-    "has_bug": true/false,
-    "bug_description": "Description of the bug found",
-    "bug_location": "Function/method name or line description",
-    "confidence": 0.0-1.0,
-    "suggested_fix": "Brief description of how to fix it"
-}
-
-Be thorough but precise. Only report bugs you are confident about."""
-
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
-        if OpenAI is None:
-            raise ImportError("openai package required")
-        self.client = OpenAI(api_key=api_key)
-        self.model = model
-
-    def analyze_code(self, code: str, filename: str = "") -> TracerPrediction:
-        """Analyze code to find bugs without knowing the actual problem."""
-        prompt = f"""Analyze this code for bugs:
-
-File: {filename}
-```python
-{code[:15000]}
-```
-
-Find any bugs or issues in this code."""
-
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-                max_tokens=1000
-            )
-
-            content = response.choices[0].message.content
-            return self._parse_response(content, code, filename)
-
-        except Exception as e:
-            return TracerPrediction(
-                predicted_error=f"Analysis failed: {str(e)}",
-                affected_files=[filename] if filename else [],
-                confidence=0.0,
-                code_snippet=code[:500]
-            )
-
-    def _parse_response(self, content: str, code: str, filename: str) -> TracerPrediction:
-        """Parse LLM response into TracerPrediction."""
-        try:
-            if "```json" in content:
-                start = content.find("```json") + 7
-                end = content.find("```", start)
-                content = content[start:end].strip()
-            elif "```" in content:
-                start = content.find("```") + 3
-                end = content.find("```", start)
-                content = content[start:end].strip()
-
-            data = json.loads(content)
-
-            if data.get("has_bug", False):
-                error_desc = data.get("bug_description", "Unknown bug")
-                location = data.get("bug_location", "")
-                if location:
-                    error_desc = f"{error_desc} (in {location})"
-            else:
-                error_desc = "No bugs detected"
-
-            return TracerPrediction(
-                predicted_error=error_desc,
-                affected_files=[filename] if filename else [],
-                confidence=float(data.get("confidence", 0.5)),
-                code_snippet=code[:500]
-            )
-
-        except (json.JSONDecodeError, KeyError):
-            return TracerPrediction(
-                predicted_error=content[:500],
-                affected_files=[filename] if filename else [],
-                confidence=0.3,
-                code_snippet=code[:500]
-            )
-
-    def compare_bug_descriptions(
-        self,
-        tracer_prediction: str,
-        actual_problem: str
-    ) -> tuple[bool, float, str]:
-        """Compare tracer's predicted bug with the actual problem description."""
-        prompt = f"""Compare these two bug descriptions and determine if they describe the SAME bug or issue.
-
-## Tracer's Prediction (what our analyzer found):
-{tracer_prediction}
-
-## Actual Problem (from issue report):
-{actual_problem[:1500]}
-
-Analyze whether these describe the same underlying bug. They don't need identical wording -
-just determine if they're referring to the same root cause or issue.
-
-Respond with JSON:
-{{
-    "is_same_bug": true/false,
-    "similarity_score": 0.0-1.0,
-    "explanation": "Why they match or don't match"
-}}
-
-Be strict: only return true if they clearly describe the same fundamental issue."""
-
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are an expert at comparing bug descriptions. Be precise and strict."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,
-                max_tokens=500
-            )
-
-            content = response.choices[0].message.content
-
-            if "```json" in content:
-                start = content.find("```json") + 7
-                end = content.find("```", start)
-                content = content[start:end].strip()
-            elif "```" in content:
-                start = content.find("```") + 3
-                end = content.find("```", start)
-                content = content[start:end].strip()
-
-            data = json.loads(content)
-            return (
-                bool(data.get("is_same_bug", False)),
-                float(data.get("similarity_score", 0.0)),
-                str(data.get("explanation", ""))
-            )
-
-        except Exception as e:
-            return (False, 0.0, f"Comparison failed: {str(e)}")
 
 
 class SWEBenchLoader:
@@ -433,24 +250,21 @@ class RepoManager:
             shutil.rmtree(repo_dir, ignore_errors=True)
 
 
-class BlindEvaluator:
-    """Evaluates using blind bug detection and official SWE-bench harness."""
+class PatchOnlyEvaluator:
+    """Evaluates using direct patching with problem description and official harness."""
 
     def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
-        self.analyzer = BugAnalyzer(api_key=api_key, model=model)
         self.patcher = LLMPatcher(api_key=api_key, model=model)
         self.repo_manager = RepoManager()
-        self.results: List[EvaluationResult] = []
-        self.error_predictions: List[ErrorPrediction] = []
-        self.patch_predictions: List[PatchPrediction] = []  # Official format
+        self.results: List[PatchOnlyResult] = []
+        self.patch_predictions: List[PatchPrediction] = []
 
-    def generate_patch(self, instance: SWEBenchInstance) -> EvaluationResult:
+    def generate_patch(self, instance: SWEBenchInstance) -> PatchOnlyResult:
         """
-        Generate a patch using blind bug detection:
+        Generate a patch using direct problem description:
         1. Clone repo and read affected files
-        2. Tracer analyzes code (doesn't see problem description)
-        3. Patcher fixes based on tracer's analysis
-        4. Return patch in unified diff format
+        2. Send problem description + code to patcher
+        3. Return patch in unified diff format
         """
         print(f"\n{'='*60}")
         print(f"Instance: {instance.instance_id}")
@@ -469,10 +283,9 @@ class BlindEvaluator:
             if not affected_files:
                 return self._error_result(instance, "No files in patch")
 
-            print(f"\n  Files to analyze: {affected_files}")
+            print(f"\n  Files to patch: {affected_files}")
 
-            # Step 3: Run tracer/analyzer on the code (BLIND - no problem description)
-            print("\n  [TRACER] Analyzing code for bugs (blind mode)...")
+            # Step 3: Read the code
             all_code = ""
             file_contents = {}
             for filepath in affected_files[:3]:
@@ -484,51 +297,25 @@ class BlindEvaluator:
             if not all_code:
                 return self._error_result(instance, "Could not read files")
 
-            tracer_prediction = self.analyzer.analyze_code(all_code, affected_files[0])
+            # Step 4: Patcher fixes using PROBLEM DESCRIPTION directly
+            print("\n  [PATCHER] Generating fix using problem description...")
+            print(f"  Problem: {instance.problem_statement[:200]}...")
 
-            print(f"  [TRACER] Predicted error: {tracer_prediction.predicted_error[:200]}")
-            print(f"  [TRACER] Confidence: {tracer_prediction.confidence:.0%}")
-
-            # Compare tracer's prediction with actual problem
-            print("\n  [COMPARE] Checking if tracer found the correct bug...")
-            is_same_bug, similarity_score, comparison_explanation = self.analyzer.compare_bug_descriptions(
-                tracer_prediction.predicted_error,
-                instance.problem_statement
-            )
-            print(f"  [COMPARE] Same bug: {is_same_bug} (similarity: {similarity_score:.0%})")
-
-            # Store prediction comparison
-            error_pred = ErrorPrediction(
-                instance_id=instance.instance_id,
-                tracer_prediction=tracer_prediction.predicted_error,
-                actual_problem=instance.problem_statement[:500],
-                files_analyzed=affected_files,
-                is_same_bug=is_same_bug,
-                similarity_score=similarity_score,
-                comparison_explanation=comparison_explanation
-            )
-            self.error_predictions.append(error_pred)
-
-            # Step 4: Patcher fixes based on TRACER's analysis
-            print("\n  [PATCHER] Generating fix based on tracer's analysis...")
             patch_result = self.patcher.patch_code(
                 source_code=all_code,
-                problem_description=tracer_prediction.predicted_error,
+                problem_description=instance.problem_statement,
                 expected_behavior=None,
-                hints=None
+                hints=instance.hints_text if instance.hints_text else None
             )
 
             if not patch_result.success or not patch_result.patches:
-                # Generate empty patch for harness
                 self.patch_predictions.append(PatchPrediction(
                     instance_id=instance.instance_id,
                     model_patch=""
                 ))
-                result = EvaluationResult(
+                result = PatchOnlyResult(
                     instance_id=instance.instance_id,
                     repo=instance.repo,
-                    tracer_found_bug=is_same_bug,
-                    tracer_prediction=tracer_prediction,
                     patch_generated=False,
                     generated_patch=None,
                     error="Patcher failed to generate fix"
@@ -552,11 +339,9 @@ class BlindEvaluator:
                 model_patch=unified_diff
             ))
 
-            result = EvaluationResult(
+            result = PatchOnlyResult(
                 instance_id=instance.instance_id,
                 repo=instance.repo,
-                tracer_found_bug=is_same_bug,
-                tracer_prediction=tracer_prediction,
                 patch_generated=True,
                 generated_patch=unified_diff
             )
@@ -586,7 +371,6 @@ class BlindEvaluator:
         # Try to extract just the fixed content for this file
         fixed = fixed_code
         if f"# File: {primary_file}" in fixed_code:
-            # Extract content for this specific file
             start = fixed_code.find(f"# File: {primary_file}")
             end = fixed_code.find("# File:", start + 1)
             if end == -1:
@@ -605,17 +389,15 @@ class BlindEvaluator:
 
         return ''.join(diff)
 
-    def _error_result(self, instance: SWEBenchInstance, error: str) -> EvaluationResult:
+    def _error_result(self, instance: SWEBenchInstance, error: str) -> PatchOnlyResult:
         print(f"  ERROR: {error}")
         self.patch_predictions.append(PatchPrediction(
             instance_id=instance.instance_id,
             model_patch=""
         ))
-        result = EvaluationResult(
+        result = PatchOnlyResult(
             instance_id=instance.instance_id,
             repo=instance.repo,
-            tracer_found_bug=False,
-            tracer_prediction=None,
             patch_generated=False,
             generated_patch=None,
             error=error
@@ -625,14 +407,13 @@ class BlindEvaluator:
 
     def generate_all(self, instances: List[SWEBenchInstance]) -> None:
         """Generate patches for all instances."""
-        print(f"\nGenerating patches for {len(instances)} instances (blind mode)...\n")
+        print(f"\nGenerating patches for {len(instances)} instances (patch-only mode)...\n")
 
         for i, instance in enumerate(instances, 1):
             print(f"\n[{i}/{len(instances)}]", end="")
             self.generate_patch(instance)
 
         self.save_predictions()
-        self.save_error_predictions()
         self.print_summary()
 
     def save_predictions(self) -> None:
@@ -651,46 +432,18 @@ class BlindEvaluator:
 
         print(f"\nPredictions saved to {PREDICTIONS_FILE} (official format)")
 
-    def save_error_predictions(self) -> None:
-        """Save tracer predictions vs actual problems."""
-        correct_predictions = sum(1 for ep in self.error_predictions if ep.is_same_bug)
-        data = {
-            "total": len(self.error_predictions),
-            "correct_predictions": correct_predictions,
-            "accuracy": correct_predictions / len(self.error_predictions) if self.error_predictions else 0,
-            "predictions": [
-                {
-                    "instance_id": ep.instance_id,
-                    "tracer_prediction": ep.tracer_prediction,
-                    "actual_problem": ep.actual_problem,
-                    "files_analyzed": ep.files_analyzed,
-                    "is_same_bug": ep.is_same_bug,
-                    "similarity_score": ep.similarity_score,
-                    "comparison_explanation": ep.comparison_explanation
-                }
-                for ep in self.error_predictions
-            ]
-        }
-
-        with open(ERROR_PRED_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
-
-        print(f"Error predictions saved to {ERROR_PRED_FILE}")
-
     def print_summary(self) -> None:
         total = len(self.results)
-        tracer_found = sum(1 for r in self.results if r.tracer_found_bug)
         patches_generated = sum(1 for r in self.results if r.patch_generated)
 
         print(f"\n{'='*60}")
-        print("PATCH GENERATION SUMMARY (Blind Mode)")
+        print("PATCH GENERATION SUMMARY (Patch-Only Mode)")
         print(f"{'='*60}")
         print(f"Total instances: {total}")
-        print(f"Tracer found CORRECT bug: {tracer_found}/{total} ({tracer_found/total*100:.1f}%)")
         print(f"Patches generated: {patches_generated}/{total} ({patches_generated/total*100:.1f}%)")
         print(f"\nPredictions saved to: {PREDICTIONS_FILE}")
         print(f"\nTo verify with official harness, run:")
-        print(f"  python swe_bench.py --verify")
+        print(f"  python swe_bench_PATCH_ONLY.py --verify")
         print(f"\nOr manually:")
         print(f"  python -m swebench.harness.run_evaluation \\")
         print(f"    --predictions_path {PREDICTIONS_FILE} \\")
@@ -700,21 +453,18 @@ class BlindEvaluator:
         print(f"    --verbose")
 
     def save_results(self, filepath: str) -> None:
-        tracer_correct = sum(1 for r in self.results if r.tracer_found_bug)
+        patches_generated = sum(1 for r in self.results if r.patch_generated)
         data = {
-            "mode": "blind",
+            "mode": "patch_only",
+            "description": "Direct patching using problem description (baseline)",
             "total": len(self.results),
-            "tracer_found_correct_bug": tracer_correct,
-            "tracer_accuracy": tracer_correct / len(self.results) if self.results else 0,
-            "patches_generated": sum(1 for r in self.results if r.patch_generated),
+            "patches_generated": patches_generated,
             "predictions_file": PREDICTIONS_FILE,
             "note": "Run --verify to evaluate with official SWE-bench harness",
             "results": [
                 {
                     "instance_id": r.instance_id,
                     "repo": r.repo,
-                    "tracer_found_correct_bug": r.tracer_found_bug,
-                    "tracer_prediction": r.tracer_prediction.predicted_error if r.tracer_prediction else None,
                     "patch_generated": r.patch_generated,
                     "harness_result": r.harness_result,
                     "error": r.error
@@ -749,7 +499,6 @@ def run_official_harness(predictions_file: str, instance_ids: Optional[List[str]
 
     os.makedirs(LOG_DIR, exist_ok=True)
 
-    # Build args for harness
     args = [
         "--predictions_path", predictions_file,
         "--swe_bench_tasks", "princeton-nlp/SWE-bench_Lite",
@@ -761,12 +510,10 @@ def run_official_harness(predictions_file: str, instance_ids: Optional[List[str]
     if instance_ids:
         args.extend(["--instance_ids"] + instance_ids)
 
-    # Run harness
     try:
         sys.argv = ["run_evaluation"] + args
         run_swebench_evaluation()
 
-        # Parse results
         results_file = os.path.join(LOG_DIR, "results.json")
         if os.path.exists(results_file):
             with open(results_file) as f:
@@ -808,7 +555,7 @@ def main():
         loader.list_instances()
         sys.exit(0)
 
-    evaluator = BlindEvaluator(api_key=api_key, model=args.model)
+    evaluator = PatchOnlyEvaluator(api_key=api_key, model=args.model)
 
     if args.instance:
         instance = loader.get_instance(args.instance)
@@ -817,7 +564,6 @@ def main():
             sys.exit(1)
         evaluator.generate_patch(instance)
         evaluator.save_predictions()
-        evaluator.save_error_predictions()
         evaluator.print_summary()
 
     elif args.run_test:
@@ -840,7 +586,6 @@ def main():
         evaluator.generate_all(instances)
 
     else:
-        # Default: first 3 instances
         instances = loader.get_all_instances()[:3]
         if instances:
             print("Running on first 3 instances")
@@ -851,30 +596,30 @@ def main():
 
     evaluator.save_results(args.output or RESULTS_FILE)
 
-    # Optionally run verification
     if args.auto_verify:
         run_official_harness(PREDICTIONS_FILE)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="SWE-bench evaluation with blind bug detection (official harness)",
+        description="SWE-bench evaluation - PATCH ONLY mode (official harness)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-This tool uses BLIND bug detection with OFFICIAL SWE-bench harness:
-1. Tracer analyzes code WITHOUT seeing the problem description
-2. Patcher fixes based on tracer's analysis
-3. Patches saved in official format (predictions.json)
+This tool uses DIRECT patching with OFFICIAL SWE-bench harness:
+1. Reads the problem description from SWE-bench
+2. Sends problem + code to patcher
+3. Patches saved in official format (PATCH_ONLY_predictions.json)
 4. Use --verify to run official SWE-bench harness
 
+This serves as a baseline comparison for blind bug detection mode.
+
 Output files:
-- predictions.json: Official format for SWE-bench harness
-- error_pred.json: Tracer's prediction vs actual problem
-- results.json: Full evaluation results
+- PATCH_ONLY_predictions.json: Official format for SWE-bench harness
+- PATCH_ONLY_results.json: Evaluation results
 
 Example workflow:
-  python swe_bench.py --run-all        # Generate patches
-  python swe_bench.py --verify         # Run official verification
+  python swe_bench_PATCH_ONLY.py --run-all    # Generate patches
+  python swe_bench_PATCH_ONLY.py --verify     # Run official verification
         """
     )
 
@@ -883,7 +628,7 @@ Example workflow:
     parser.add_argument('--run-test', action='store_true', help='Run on test split')
     parser.add_argument('--run-all', action='store_true', help='Run on all instances')
     parser.add_argument('--limit', '-n', type=int, help='Limit number of instances to run')
-    parser.add_argument('--verify', action='store_true', help='Run official SWE-bench harness on predictions.json')
+    parser.add_argument('--verify', action='store_true', help='Run official SWE-bench harness')
     parser.add_argument('--auto-verify', action='store_true', help='Auto-run harness after generation')
     parser.add_argument('--output', '-o', help='Save results to JSON file')
     parser.add_argument('--api-key', '-k', help='OpenAI API key')
