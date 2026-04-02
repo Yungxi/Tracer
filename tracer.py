@@ -149,6 +149,22 @@ def main():
     # Create reporter
     reporter = Reporter(use_colors=not args.no_color)
 
+    # Check for syntax errors
+    if parsed.has_syntax_errors():
+        print(f"\n{'='*60}")
+        print(f"SYNTAX ERRORS FOUND")
+        print(f"{'='*60}\n")
+        for err in parsed.syntax_errors:
+            print(f"  Line {err.lineno}: {err.message}")
+            print(f"    {err.text}")
+            if err.offset:
+                print(f"    {' ' * (err.offset - 1)}^")
+        print(f"\n{'='*60}")
+        print("Tracer cannot execute code with syntax errors.")
+        print("Fix the syntax errors and try again.")
+        print(f"{'='*60}\n")
+        sys.exit(1)
+
     try:
         # Show script info
         if script_goal:

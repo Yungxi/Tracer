@@ -2,6 +2,14 @@
 
 A Python code tracing tool that executes code step-by-step and uses an LLM to evaluate function outputs for correctness.
 
+Tracer can detect 3 types of errors:
+
+1. Syntax Errors - Errors made in code syntax. Tracer will stop and report the first syntax error upon parsing the code and terminate the program. Note that syntax errors further along will not be detected in one pass.
+
+2. Runtime Errors - Errors caught during program execution (E.g. 0 division, KeyError, TypeError). Tracer will find all runtime errors in one pass assuming there are no syntax errors.
+
+3. Logical Errors - Errors in the design and function of the program. Tracer uses an LLM judge to evaluate whether the code given actually achieves the pugrpose of the program as specified by the user. Tracer will find all logical errors in one pass assuming there are no syntax errors.
+
 ## Architecture
 
 ```

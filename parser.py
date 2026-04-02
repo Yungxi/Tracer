@@ -31,6 +31,15 @@ class ClassInfo:
 
 
 @dataclass
+class SyntaxErrorInfo:
+    """Information about a syntax error in the code."""
+    lineno: int
+    offset: int
+    message: str
+    text: str  # The line with the error
+
+
+@dataclass
 class ParsedCode:
     """Complete parsed representation of Python source code."""
     source: str
@@ -39,6 +48,10 @@ class ParsedCode:
     main_statements: List[ast.stmt]
     main_source: str
     imports: List[str]
+    syntax_errors: List[SyntaxErrorInfo] = field(default_factory=list)
+
+    def has_syntax_errors(self) -> bool:
+        return len(self.syntax_errors) > 0
 
 
 class CodeParser:
@@ -53,7 +66,23 @@ class CodeParser:
         try:
             tree = ast.parse(self.source)
         except SyntaxError as e:
-            raise SyntaxError(f"Failed to parse code: {e}")
+            # Return ParsedCode with syntax error info instead of crashing
+            error_line = self.lines[e.lineno - 1] if e.lineno and e.lineno <= len(self.lines) else ""
+            syntax_error = SyntaxErrorInfo(
+                lineno=e.lineno or 0,
+                offset=e.offset or 0,
+                message=e.msg or str(e),
+                text=error_line.rstrip()
+            )
+            return ParsedCode(
+                source=self.source,
+                functions=[],
+                classes=[],
+                main_statements=[],
+                main_source="",
+                imports=[],
+                syntax_errors=[syntax_error]
+            )
 
         functions = []
         classes = []
