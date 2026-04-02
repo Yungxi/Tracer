@@ -46,6 +46,16 @@ class ExecutionStep:
 
 
 @dataclass
+class ErrorInfo:
+    """Information about an error encountered during execution."""
+    lineno: int
+    code: str
+    error_type: str
+    error_message: str
+    traceback: Optional[str] = None
+
+
+@dataclass
 class ExecutionResult:
     """Complete result of code execution."""
     success: bool
@@ -55,16 +65,20 @@ class ExecutionResult:
     final_variables: Dict[str, Any]
     error_message: Optional[str] = None
     error_traceback: Optional[str] = None
+    errors: List[ErrorInfo] = field(default_factory=list)  # All errors found
 
 
 class TracingExecutor:
     """Executes Python code with tracing and LLM judgment."""
 
-    def __init__(self, parsed_code: ParsedCode, judge: Optional[LLMJudge] = None):
+    def __init__(self, parsed_code: ParsedCode, judge: Optional[LLMJudge] = None,
+                 continue_on_error: bool = False):
         self.parsed_code = parsed_code
         self.judge = judge
+        self.continue_on_error = continue_on_error
         self.steps: List[ExecutionStep] = []
         self.function_calls: List[FunctionCall] = []
+        self.errors: List[ErrorInfo] = []  # Collect all errors
         self.globals: Dict[str, Any] = {}
         self.locals: Dict[str, Any] = {}
         self._function_sources: Dict[str, str] = {}
@@ -195,10 +209,21 @@ class TracingExecutor:
                     call_record.judgment = judgment
 
                     if judgment.verdict == Verdict.INCORRECT:
-                        executor._stop_with_error(
-                            StopReason.JUDGMENT_FAILED,
-                            f"Function '{name}' output judged incorrect: {judgment.explanation}"
+                        # Record as an error
+                        error_info = ErrorInfo(
+                            lineno=func_info.lineno,
+                            code=f"{name}({executor._format_args(args, kwargs)})",
+                            error_type="LogicError",
+                            error_message=f"LLM Judge: {judgment.explanation}",
+                            traceback=None
                         )
+                        executor.errors.append(error_info)
+
+                        if not executor.continue_on_error:
+                            executor._stop_with_error(
+                                StopReason.JUDGMENT_FAILED,
+                                f"Function '{name}' output judged incorrect: {judgment.explanation}"
+                            )
 
                 executor.function_calls.append(call_record)
                 executor.steps.append(ExecutionStep(
@@ -215,7 +240,31 @@ class TracingExecutor:
             except Exception as e:
                 call_record.error = str(e)
                 executor.function_calls.append(call_record)
-                raise
+
+                # Record the error
+                error_info = ErrorInfo(
+                    lineno=func_info.lineno,
+                    code=f"{name}({executor._format_args(args, kwargs)})",
+                    error_type=type(e).__name__,
+                    error_message=str(e),
+                    traceback=traceback.format_exc()
+                )
+                executor.errors.append(error_info)
+
+                executor.steps.append(ExecutionStep(
+                    lineno=func_info.lineno,
+                    code=f"{name}({executor._format_args(args, kwargs)})",
+                    step_type='error',
+                    result=str(e),
+                    function_call=call_record,
+                    variables_snapshot=executor._safe_snapshot()
+                ))
+
+                if executor.continue_on_error:
+                    # Return None and continue
+                    return None
+                else:
+                    raise
 
         wrapper.__name__ = name
         wrapper.__doc__ = func_info.docstring
@@ -224,7 +273,7 @@ class TracingExecutor:
     def _execute_main_statements(self):
         """Execute main (top-level) statements one by one."""
         for stmt in self.parsed_code.main_statements:
-            if self._stopped:
+            if self._stopped and not self.continue_on_error:
                 break
 
             code = ast.get_source_segment(self.parsed_code.source, stmt) or ""
@@ -244,6 +293,15 @@ class TracingExecutor:
                 ))
 
             except Exception as e:
+                error_info = ErrorInfo(
+                    lineno=lineno,
+                    code=code,
+                    error_type=type(e).__name__,
+                    error_message=str(e),
+                    traceback=traceback.format_exc()
+                )
+                self.errors.append(error_info)
+
                 self.steps.append(ExecutionStep(
                     lineno=lineno,
                     code=code,
@@ -251,7 +309,13 @@ class TracingExecutor:
                     result=str(e),
                     variables_snapshot=self._safe_snapshot()
                 ))
-                raise
+
+                if self.continue_on_error:
+                    # Record error but continue to next statement
+                    self._error_message = str(e)
+                    continue
+                else:
+                    raise
 
     def _stop_with_error(self, reason: StopReason, message: str):
         """Stop execution with an error."""
@@ -291,6 +355,11 @@ class TracingExecutor:
         error_traceback: Optional[str] = None
     ) -> ExecutionResult:
         """Create the final execution result."""
+        # If we continued on errors, determine final status
+        if self.continue_on_error and self.errors:
+            success = False
+            stop_reason = StopReason.RUNTIME_ERROR
+
         return ExecutionResult(
             success=success,
             stop_reason=self._stop_reason or stop_reason,
@@ -298,5 +367,6 @@ class TracingExecutor:
             function_calls=self.function_calls,
             final_variables=self._safe_snapshot(),
             error_message=error_message or self._error_message,
-            error_traceback=error_traceback
+            error_traceback=error_traceback,
+            errors=self.errors
         )

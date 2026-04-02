@@ -24,10 +24,39 @@ from reporter import Reporter
 
 
 # =============================================================================
-# CONFIGURATION - Set your API key here
+# CONFIGURATION
 # =============================================================================
-OPENAI_API_KEY = ""  # <-- Put your OpenAI API key here
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 SCRIPTS_FILE = "scripts.json"  # Path to scripts JSON file
+
+
+def load_config() -> dict:
+    """Load configuration from config.json file."""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {}
+
+
+def get_api_key(args_api_key: str = None) -> str:
+    """
+    Get API key from (in order of priority):
+    1. Command line argument
+    2. Environment variable OPENAI_API_KEY
+    3. config.json file
+    """
+    if args_api_key:
+        return args_api_key
+
+    env_key = os.environ.get('OPENAI_API_KEY')
+    if env_key:
+        return env_key
+
+    config = load_config()
+    return config.get('openai_api_key', '')
 # =============================================================================
 
 
@@ -68,12 +97,12 @@ def main():
             print(f"Scripts file not found: {scripts_path}", file=sys.stderr)
         sys.exit(0)
 
-    # Get API key
-    api_key = OPENAI_API_KEY or args.api_key or os.environ.get('OPENAI_API_KEY')
+    # Get API key (priority: CLI arg > env var > config.json)
+    api_key = get_api_key(args.api_key)
 
     if not api_key:
         print("Error: OpenAI API key required.", file=sys.stderr)
-        print("Set OPENAI_API_KEY in tracer.py or provide via --api-key flag.", file=sys.stderr)
+        print("Set via --api-key, OPENAI_API_KEY env var, or in config.json", file=sys.stderr)
         sys.exit(1)
 
     # Determine source: script from JSON or file

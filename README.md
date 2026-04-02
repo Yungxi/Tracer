@@ -1,14 +1,96 @@
 # Tracer
 
-A Python code tracing and patching tool that uses LLM to evaluate function outputs and automatically fix bugs.
+A Python code tracing tool that executes code step-by-step and uses an LLM to evaluate function outputs for correctness.
 
-## Features
+## Architecture
 
-- **Code Tracing**: Execute Python code step-by-step with full visibility
-- **LLM Judge**: Evaluate function outputs for correctness using OpenAI
-- **Goal-Based Evaluation**: Judge outputs against the script's intended purpose
-- **Auto Patching**: Generate fixes for detected bugs using LLM
-- **SWE-bench Integration**: Test against real-world bugs from the SWE-bench Lite dataset
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        HOW TRACER WORKS                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   Code String ──► parser.py ──► executor.py ◄──► judge.py      │
+│                                      │                          │
+│                                      ▼                          │
+│                                 reporter.py                     │
+│                                      │                          │
+│                                      ▼                          │
+│                              Execution Report                   │
+│                         (errors, judgments, trace)              │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Core Modules
+
+| Module | Purpose |
+|--------|---------|
+| **parser.py** | Parses Python code into AST, extracts functions, classes, and statements |
+| **executor.py** | Executes code step-by-step, wraps functions to intercept calls, collects errors |
+| **judge.py** | LLM-based judge that evaluates function outputs for correctness |
+| **reporter.py** | Formats and displays execution trace with colors |
+| **patcher.py** | LLM-based code patching for fixing bugs (optional) |
+
+### Entry Points
+
+| File | Purpose |
+|------|---------|
+| **tracer.py** | CLI wrapper - runs tracer on `.py` files from command line |
+| **Direct imports** | Import `parser`, `executor`, `judge`, `reporter` directly in your code |
+
+**Important:** `tracer.py` is just a CLI convenience wrapper. The actual tracing logic lives in the core modules above. You can use them directly:
+
+```python
+from parser import parse_source
+from executor import TracingExecutor
+from judge import LLMJudge
+from reporter import Reporter
+
+# Parse code
+parsed = parse_source(code_string)
+
+# Create judge with goal
+judge = LLMJudge(api_key="sk-...", script_goal="Calculate totals correctly")
+
+# Execute with tracing (continue_on_error=True finds ALL bugs)
+executor = TracingExecutor(parsed, judge=judge, continue_on_error=True)
+result = executor.execute()
+
+# Report results
+reporter = Reporter(use_colors=True)
+reporter.report_result(result)
+
+# Access errors found
+for err in result.errors:
+    print(f"Line {err.lineno}: {err.error_type} - {err.error_message}")
+```
+
+## Project Structure
+
+```
+Tracer/
+├── parser.py           # Core: AST-based code parser
+├── executor.py         # Core: Step-by-step executor with tracing
+├── judge.py            # Core: LLM judge for function outputs
+├── reporter.py         # Core: Colored terminal output
+├── patcher.py          # Core: LLM-based code fixer
+├── tracer.py           # CLI: Command-line wrapper for core modules
+│
+├── config.json         # Your API key and settings (git-ignored)
+├── config.example.json # Template for config.json
+├── requirements.txt
+├── README.md
+│
+└── test_scripts/       # Demos, benchmarks, and test data
+    ├── demo_tracer.py      # Demo: Tracer on custom buggy code
+    ├── demo_dsdbench.py    # Demo: Tracer on DSDBench instances
+    ├── dsd_bench.py        # Benchmark: DSDBench evaluation
+    ├── swe_bench.py        # Benchmark: SWE-bench evaluation
+    ├── swe_bench_PATCH_ONLY.py  # Benchmark: SWE-bench baseline
+    ├── dsd_bench_data/     # DSDBench dataset files
+    ├── example.py
+    └── scripts.json
+```
 
 ## Installation
 
@@ -20,195 +102,201 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Set your OpenAI API key in the respective files:
-
-```python
-# In tracer.py or swe_bench.py
-OPENAI_API_KEY = "sk-your-key-here"
-```
-
-Or use the `--api-key` flag or `OPENAI_API_KEY` environment variable.
-
-## Usage
-
-### 1. Tracer - Trace and Judge Code Execution
-
-Trace a Python file and have the LLM judge each function's output:
+Set your OpenAI API key:
 
 ```bash
-# Trace a file
-python tracer.py example.py
-
-# Trace with a goal (LLM judges against this goal)
-python tracer.py example.py --goal "Calculate arithmetic operations correctly"
-
-# Show code structure before execution
-python tracer.py example.py --show-structure
+cp config.example.json config.json
+# Edit config.json and add your API key
 ```
-
-#### Using scripts.json
-
-Store scripts with their goals in `scripts.json`:
 
 ```json
 {
-  "scripts": [
-    {
-      "name": "my_script",
-      "goal": "Description of what the script should do",
-      "code": "def add(a, b):\n    return a + b\n\nresult = add(2, 3)\nprint(result)"
-    }
-  ]
+    "openai_api_key": "sk-your-api-key-here",
+    "default_model": "gpt-4o-mini"
 }
 ```
 
-Then run:
-
+Or use environment variable:
 ```bash
-# List available scripts
-python tracer.py --list
-
-# Run a script by name
-python tracer.py --script my_script
+export OPENAI_API_KEY="sk-your-api-key-here"
 ```
 
-### 2. SWE-bench - Test Against Real Bugs
+## Quick Start
 
-Evaluate the patcher against the SWE-bench Lite dataset (323 real-world GitHub issues):
-
-```bash
-# List all available instances
-python swe_bench.py --list
-
-# Run on a specific instance
-python swe_bench.py --instance django__django-11179
-
-# Run on dev split (23 instances)
-python swe_bench.py --run-dev
-
-# Run on all instances
-python swe_bench.py --run-all
-```
-
-#### Verify Patches with Actual Tests
-
-Use `--verify` to clone the repo and run the actual test suite:
+### Run the Demos
 
 ```bash
-# Verify a single instance
-python swe_bench.py --instance django__django-11179 --verify
+# Demo 1: Tracer finding bugs in pandas code (3 intentional bugs)
+python test_scripts/demo_tracer.py
 
-# Verify all dev instances
-python swe_bench.py --run-dev --verify
-
-# Save results to JSON
-python swe_bench.py --run-dev --verify --output results.json
+# Demo 2: Tracer on real DSDBench benchmark instances
+python test_scripts/demo_dsdbench.py --instance 1
+python test_scripts/demo_dsdbench.py --list  # See available instances
 ```
 
-### 3. Patcher - Generate Bug Fixes
+### Use the CLI
 
-The patcher can be used programmatically:
+```bash
+# Trace a Python file
+python tracer.py example.py
+
+# Trace with a goal (LLM judges against this)
+python tracer.py example.py --goal "Calculate arithmetic operations correctly"
+```
+
+## Features
+
+### 1. Step-by-Step Execution Tracing
+
+Tracer executes code statement-by-statement, recording:
+- Each line executed
+- Function calls with arguments and return values
+- Variable states at each step
+- Errors encountered
+
+### 2. LLM Judge
+
+For each function call, the LLM evaluates:
+- Is the output correct given the function's purpose?
+- Does it match the script's overall goal?
+
+Verdicts: `CORRECT`, `INCORRECT`, `UNSURE`
+
+### 3. Multi-Error Detection
+
+With `continue_on_error=True`, Tracer keeps executing after errors to find ALL bugs:
 
 ```python
-from patcher import LLMPatcher
+executor = TracingExecutor(parsed, judge=judge, continue_on_error=True)
+result = executor.execute()
 
-patcher = LLMPatcher(api_key="sk-...")
-
-# Fix code with a known problem
-result = patcher.patch_code(
-    source_code="def subtract(a, b):\n    return a + b",
-    problem_description="subtract returns wrong result",
-    expected_behavior="Should return a - b"
-)
-
-print(result.patches[0].fixed_code)
-print(result.patches[0].explanation)
+# result.errors contains ALL errors found:
+# - Runtime errors (KeyError, TypeError, etc.)
+# - Logic errors (detected by LLM Judge)
 ```
 
-## Project Structure
+### 4. Benchmark Integration
 
-```
-Tracer/
-├── tracer.py       # Main CLI - trace and judge code
-├── parser.py       # AST-based code parser
-├── executor.py     # Step-by-step code executor
-├── judge.py        # LLM judge for function outputs
-├── reporter.py     # Colored terminal output
-├── patcher.py      # LLM-based code fixer
-├── swe_bench.py    # SWE-bench dataset integration
-├── scripts.json    # Example scripts with goals
-└── example.py      # Sample code to trace
-```
-
-## How It Works
-
-### Tracing Flow
-
-1. **Parse**: Split code into functions and main statements using AST
-2. **Execute**: Run main code step-by-step
-3. **Intercept**: Wrap function calls to capture inputs/outputs
-4. **Judge**: Send each function call to LLM for evaluation
-5. **Report**: Display results with verdict (CORRECT/INCORRECT)
-
-### SWE-bench Flow
-
-1. **Load**: Fetch dataset from Hugging Face
-2. **Generate**: Create patch from problem description using LLM
-3. **Compare**: Show similarity to ground truth patch
-4. **Verify** (optional): Clone repo, apply patch, run tests
-
-## Options
-
-### tracer.py
-
-| Flag | Description |
-|------|-------------|
-| `--script, -S` | Run script from scripts.json by name |
-| `--goal, -g` | Goal/purpose for LLM to judge against |
-| `--list, -l` | List available scripts |
-| `--show-structure, -s` | Show parsed code structure |
-| `--model, -m` | OpenAI model (default: gpt-4o-mini) |
-| `--json, -j` | Output results as JSON |
-| `--no-color` | Disable colored output |
-
-### swe_bench.py
-
-| Flag | Description |
-|------|-------------|
-| `--instance, -i` | Run specific instance by ID |
-| `--run-dev` | Run on dev split (23 instances) |
-| `--run-all` | Run on all instances (323) |
-| `--verify, -V` | Clone repos and run actual tests |
-| `--output, -o` | Save results to JSON file |
-| `--model, -m` | OpenAI model (default: gpt-4o-mini) |
+- **DSDBench**: 1,117 annotated data science debugging examples
+- **SWE-bench**: 323 real-world GitHub issues
 
 ## Example Output
 
 ```
 ============================================================
-Script: buggy_calculator
-Goal: A calculator that correctly performs addition, subtraction, and multiplication
+QUESTION: Find the top 3 customers who spent the most money
 ============================================================
 
+[1] Parsing code...
+Functions: get_top_customers, calculate_average, format_output
+Main code: 11 statements
+
+[2] LLM Judge goal: Find top 3 customers by spending
+
+[3] Executing with Tracer (continue_on_error=True)...
+
 === Execution Trace ===
+[1]  IMPORT: import pandas as pd
+[2]  L5 customers_data = {...}
+[3]  L10 orders_data = {...}
+...
+[6]  L20 CALL: get_top_customers()
+     Return: DataFrame with Carol, David, Alice
+     LLM Judge: INCORRECT (90%)
+     Reason: Returns LOWEST spenders due to ascending=True
 
-[1] L1 IMPORT: (none)
-[2] L10 CALL: add()
-    Args: 10, 3
-    Return: 13
-    LLM Judge: CORRECT (95%)
-    Reason: Addition of 10 + 3 = 13 is correct.
+[10] L30 CALL: calculate_average()
+     Return: {1: 112.5, 3: 43.875, 4: 100.0}
+     LLM Judge: INCORRECT (90%)
+     Reason: Divides by total count instead of per-customer
 
-[3] L14 CALL: subtract()
-    Args: 10, 3
-    Return: 13
-    LLM Judge: INCORRECT (98%)
-    Reason: subtract(10, 3) should return 7, not 13. The function has a bug.
+[13] L38 ERROR: format_output()
+     KeyError: 'customer_name'
 
-=== Execution Result ===
+=== TRACER'S FINDINGS ===
 
-Status: STOPPED
-Reason: judgment_failed
+Tracer found 3 error(s):
+
+  [1] Line 20: LogicError
+      LLM Judge: ascending=True returns lowest spenders
+
+  [2] Line 30: LogicError
+      LLM Judge: Wrong average calculation
+
+  [3] Line 38: KeyError
+      'customer_name' column doesn't exist
+```
+
+## Benchmark Usage
+
+### DSDBench
+
+```bash
+# List dataset statistics
+python test_scripts/dsd_bench.py --list
+
+# Run on specific instance
+python test_scripts/dsd_bench.py --instance 1
+
+# Run full evaluation
+python test_scripts/dsd_bench.py --run-single
+```
+
+### SWE-bench
+
+```bash
+# List instances
+python test_scripts/swe_bench.py --list
+
+# Run on specific instance
+python test_scripts/swe_bench.py --instance django__django-11179
+
+# Verify with actual tests
+python test_scripts/swe_bench.py --instance django__django-11179 --verify
+```
+
+## API Reference
+
+### TracingExecutor
+
+```python
+executor = TracingExecutor(
+    parsed_code,           # From parser.parse_source()
+    judge=None,            # Optional LLMJudge instance
+    continue_on_error=False  # Set True to find ALL errors
+)
+
+result = executor.execute()
+
+# result.success: bool
+# result.stop_reason: StopReason enum
+# result.steps: List[ExecutionStep]
+# result.errors: List[ErrorInfo]  # All errors found
+# result.function_calls: List[FunctionCall]
+```
+
+### LLMJudge
+
+```python
+judge = LLMJudge(
+    api_key="sk-...",
+    model="gpt-4o-mini",
+    script_goal="Description of what the code should do"
+)
+
+# Judge is called automatically by TracingExecutor for each function call
+```
+
+### ErrorInfo
+
+```python
+@dataclass
+class ErrorInfo:
+    lineno: int           # Line number
+    code: str             # Code that caused error
+    error_type: str       # "KeyError", "LogicError", etc.
+    error_message: str    # Error description
+    traceback: str        # Full traceback (for runtime errors)
 ```
 
 ## License

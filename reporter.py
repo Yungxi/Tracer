@@ -6,7 +6,7 @@ import json
 from typing import Optional, TextIO
 import sys
 
-from executor import ExecutionResult, ExecutionStep, FunctionCall, StopReason
+from executor import ExecutionResult, ExecutionStep, FunctionCall, StopReason, ErrorInfo
 from judge import Verdict
 from parser import ParsedCode
 
@@ -156,11 +156,22 @@ class Reporter:
         self._print(f"Steps executed: {len(result.steps)}")
         self._print(f"Function calls: {len(result.function_calls)}")
 
-        # Error details
-        if result.error_message:
+        # All errors found (when continue_on_error is used)
+        if result.errors and len(result.errors) > 1:
+            self._print(f"\n{self._c(f'Errors Found ({len(result.errors)}):', Colors.RED, Colors.BOLD)}")
+            for i, err in enumerate(result.errors, 1):
+                self._print(f"\n  {self._c(f'[{i}] Line {err.lineno}:', Colors.RED)} {err.error_type}")
+                self._print(f"      Code: {err.code[:60]}{'...' if len(err.code) > 60 else ''}")
+                self._print(f"      Message: {err.error_message}")
+        elif result.errors:
+            # Single error
+            err = result.errors[0]
+            self._print(f"\n{self._c('Error:', Colors.RED, Colors.BOLD)} {err.error_type}: {err.error_message}")
+            self._print(f"    Line {err.lineno}: {err.code}")
+        elif result.error_message:
             self._print(f"\n{self._c('Error:', Colors.RED, Colors.BOLD)} {result.error_message}")
 
-        if result.error_traceback:
+        if result.error_traceback and not result.errors:
             self._print(f"\n{self._c('Traceback:', Colors.RED)}")
             self._print(result.error_traceback)
 

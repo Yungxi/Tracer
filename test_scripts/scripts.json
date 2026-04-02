@@ -1,0 +1,24 @@
+{
+  "scripts": [
+    {
+      "name": "math_operations",
+      "goal": "Perform basic arithmetic operations (addition, multiplication, division) on numbers and print the results",
+      "code": "def add_numbers(a, b):\n    \"\"\"Add two numbers together.\"\"\"\n    return a + b\n\n\ndef multiply(x, y):\n    \"\"\"Multiply two numbers.\"\"\"\n    return x * y\n\n\ndef divide(a, b):\n    \"\"\"Divide a by b.\"\"\"\n    return a / b\n\n\n# Main process\nresult1 = add_numbers(5, 3)\nprint(f\"5 + 3 = {result1}\")\n\nresult2 = multiply(4, 7)\nprint(f\"4 * 7 = {result2}\")\n\nresult3 = divide(20, 4)\nprint(f\"20 / 4 = {result3}\")\n"
+    },
+    {
+      "name": "string_processor",
+      "goal": "Process and transform strings: reverse them, count vowels, and check if they are palindromes",
+      "code": "def reverse_string(s):\n    \"\"\"Reverse a string.\"\"\"\n    return s[::-1]\n\n\ndef count_vowels(s):\n    \"\"\"Count the number of vowels in a string.\"\"\"\n    return sum(1 for c in s.lower() if c in 'aeiou')\n\n\ndef is_palindrome(s):\n    \"\"\"Check if a string is a palindrome.\"\"\"\n    clean = s.lower().replace(' ', '')\n    return clean == clean[::-1]\n\n\n# Main process\ntext = \"hello world\"\nreversed_text = reverse_string(text)\nprint(f\"Reversed: {reversed_text}\")\n\nvowel_count = count_vowels(text)\nprint(f\"Vowels in '{text}': {vowel_count}\")\n\ntest_word = \"racecar\"\nresult = is_palindrome(test_word)\nprint(f\"Is '{test_word}' a palindrome? {result}\")\n"
+    },
+    {
+      "name": "list_operations",
+      "goal": "Demonstrate list operations: find maximum value, calculate average, and filter even numbers",
+      "code": "def find_max(numbers):\n    \"\"\"Find the maximum value in a list.\"\"\"\n    if not numbers:\n        return None\n    return max(numbers)\n\n\ndef calculate_average(numbers):\n    \"\"\"Calculate the average of a list of numbers.\"\"\"\n    if not numbers:\n        return 0\n    return sum(numbers) / len(numbers)\n\n\ndef filter_evens(numbers):\n    \"\"\"Filter and return only even numbers.\"\"\"\n    return [n for n in numbers if n % 2 == 0]\n\n\n# Main process\ndata = [3, 7, 2, 9, 4, 1, 8, 5, 6]\n\nmax_val = find_max(data)\nprint(f\"Maximum: {max_val}\")\n\navg = calculate_average(data)\nprint(f\"Average: {avg}\")\n\nevens = filter_evens(data)\nprint(f\"Even numbers: {evens}\")\n"
+    },
+    {
+      "name": "buggy_calculator",
+      "goal": "A calculator that correctly performs addition, subtraction, and multiplication on two numbers",
+      "code": "def add(a, b):\n    \"\"\"Add two numbers.\"\"\"\n    return a + b\n\n\ndef subtract(a, b):\n    \"\"\"Subtract b from a.\"\"\"\n    return a + b  # BUG: should be a - b\n\n\ndef multiply(a, b):\n    \"\"\"Multiply two numbers.\"\"\"\n    return a * b\n\n\n# Main process\nx, y = 10, 3\n\nsum_result = add(x, y)\nprint(f\"{x} + {y} = {sum_result}\")\n\ndiff_result = subtract(x, y)\nprint(f\"{x} - {y} = {diff_result}\")\n\nprod_result = multiply(x, y)\nprint(f\"{x} * {y} = {prod_result}\")\n"
+    }
+  ]
+}

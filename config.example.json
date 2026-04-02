@@ -1,0 +1,12 @@
+{
+    "openai_api_key": "YOUR_API_KEY_HERE",
+    "default_model": "gpt-4o-mini",
+    "dsd_bench": {
+        "data_dir": "test_scripts/dsd_bench_data",
+        "results_dir": "test_scripts/dsd_bench_results"
+    },
+    "swe_bench": {
+        "workspace_dir": "/tmp/swe_bench_workspace",
+        "log_dir": "/tmp/swe_bench_logs"
+    }
+}
