@@ -12,6 +12,7 @@ adopt (OpenAI, Anthropic, a local model, or a mock).
 | `toy_agent.py` | The interface: `ToyAgent` + `@agent.add_step`. ~120 lines. |
 | `example_table_qa.py` | A runnable toy table-QA agent with one silent bug. |
 | `tracer_toy_agent.ipynb` | Notebook walkthrough: define steps → sanity-run → audit with Tracer → fix → re-audit. |
+| [`INTERFACE.md`](INTERFACE.md) | The framework-agnostic contract Tracer expects. `toy_agent.py` is one implementation; LangChain / LangGraph / AutoGen agents can adapt via a thin wrapper. |
 
 ## The mental model
 
