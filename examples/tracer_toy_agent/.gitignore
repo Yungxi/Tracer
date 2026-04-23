@@ -1,0 +1,2 @@
+# Belt-and-suspenders: never commit API keys from this directory.
+api_key.json
