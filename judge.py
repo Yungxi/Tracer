@@ -95,7 +95,7 @@ Be strict but fair. Pay special attention to whether the function's behavior ali
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                max_tokens=500
+                max_completion_tokens=500
             )
 
             content = response.choices[0].message.content
@@ -158,7 +158,7 @@ Is this execution state reasonable and correct?"""
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                max_tokens=500
+                max_completion_tokens=500
             )
 
             content = response.choices[0].message.content
