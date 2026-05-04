@@ -1,11 +1,13 @@
 """
 Code Parser - AST-based Python code analysis.
 Extracts functions, classes, and main process code from Python source.
+Supports multi-file projects with local import detection.
 """
 
 import ast
+import os
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 
 
 @dataclass
@@ -18,6 +20,7 @@ class FunctionInfo:
     docstring: Optional[str]
     args: List[str]
     decorators: List[str] = field(default_factory=list)
+    source_file: Optional[str] = None  # Track which file this function is from
 
 
 @dataclass
@@ -28,6 +31,7 @@ class ClassInfo:
     end_lineno: int
     source: str
     methods: List[FunctionInfo] = field(default_factory=list)
+    source_file: Optional[str] = None  # Track which file this class is from
 
 
 @dataclass
@@ -178,10 +182,152 @@ def parse_file(filepath: str) -> ParsedCode:
         source = f.read()
 
     parser = CodeParser(source)
-    return parser.parse()
+    parsed = parser.parse()
+
+    # Tag all functions/classes with their source file
+    for func in parsed.functions:
+        func.source_file = filepath
+    for cls in parsed.classes:
+        cls.source_file = filepath
+
+    return parsed
 
 
 def parse_source(source: str) -> ParsedCode:
     """Parse Python source code string and return its structure."""
     parser = CodeParser(source)
     return parser.parse()
+
+
+def _detect_local_imports(parsed: ParsedCode, base_dir: str) -> List[str]:
+    """
+    Detect local imports that can be resolved to files in the project.
+
+    Returns list of absolute file paths for local modules.
+    """
+    local_files = []
+
+    for import_stmt in parsed.imports:
+        # Parse the import statement to extract module names
+        try:
+            tree = ast.parse(import_stmt)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        module_path = _resolve_module_path(alias.name, base_dir)
+                        if module_path:
+                            local_files.append(module_path)
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        module_path = _resolve_module_path(node.module, base_dir)
+                        if module_path:
+                            local_files.append(module_path)
+                    # Handle relative imports
+                    if node.level > 0:
+                        # Relative import - try to resolve from base_dir
+                        for alias in node.names:
+                            if node.module:
+                                full_module = f"{node.module}.{alias.name}"
+                            else:
+                                full_module = alias.name
+                            module_path = _resolve_module_path(full_module, base_dir)
+                            if module_path:
+                                local_files.append(module_path)
+        except SyntaxError:
+            continue
+
+    return local_files
+
+
+def _resolve_module_path(module_name: str, base_dir: str) -> Optional[str]:
+    """
+    Try to resolve a module name to a local file path.
+
+    Returns the absolute path if found, None otherwise.
+    """
+    # Convert module.name to module/name.py or module/name/__init__.py
+    parts = module_name.split('.')
+
+    # Try as a direct .py file
+    file_path = os.path.join(base_dir, *parts) + '.py'
+    if os.path.isfile(file_path):
+        return os.path.abspath(file_path)
+
+    # Try as a package (__init__.py)
+    init_path = os.path.join(base_dir, *parts, '__init__.py')
+    if os.path.isfile(init_path):
+        return os.path.abspath(init_path)
+
+    return None
+
+
+def parse_project(filepath: str, recursive: bool = True) -> ParsedCode:
+    """
+    Parse a Python file and optionally all its local imports recursively.
+
+    Args:
+        filepath: Path to the main Python file
+        recursive: If True, also parse all local imports
+
+    Returns:
+        ParsedCode with functions/classes from all parsed files combined
+    """
+    filepath = os.path.abspath(filepath)
+    base_dir = os.path.dirname(filepath)
+
+    # Parse the main file
+    main_parsed = parse_file(filepath)
+
+    if not recursive or main_parsed.has_syntax_errors():
+        return main_parsed
+
+    # Track all parsed files to avoid circular imports
+    parsed_files: Set[str] = {filepath}
+    all_functions: List[FunctionInfo] = list(main_parsed.functions)
+    all_classes: List[ClassInfo] = list(main_parsed.classes)
+    all_imports: List[str] = list(main_parsed.imports)
+
+    # Queue of files to parse
+    to_parse = _detect_local_imports(main_parsed, base_dir)
+
+    while to_parse:
+        next_file = to_parse.pop(0)
+
+        if next_file in parsed_files:
+            continue
+
+        parsed_files.add(next_file)
+
+        try:
+            parsed = parse_file(next_file)
+
+            if parsed.has_syntax_errors():
+                continue
+
+            # Add functions and classes from this file
+            all_functions.extend(parsed.functions)
+            all_classes.extend(parsed.classes)
+            all_imports.extend(parsed.imports)
+
+            # Find more local imports
+            file_dir = os.path.dirname(next_file)
+            new_imports = _detect_local_imports(parsed, file_dir)
+            for imp in new_imports:
+                if imp not in parsed_files:
+                    to_parse.append(imp)
+
+        except (IOError, OSError):
+            # File couldn't be read, skip it
+            continue
+
+    # Return combined ParsedCode
+    # Note: main_statements and main_source only come from the entry file
+    return ParsedCode(
+        source=main_parsed.source,
+        functions=all_functions,
+        classes=all_classes,
+        main_statements=main_parsed.main_statements,
+        main_source=main_parsed.main_source,
+        imports=all_imports,
+        syntax_errors=main_parsed.syntax_errors
+    )

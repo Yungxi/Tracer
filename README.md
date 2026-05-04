@@ -165,6 +165,9 @@ python tracer.py example.py --goal "..." --detailed
 
 # Combined: judge every statement and show all judgments
 python tracer.py example.py --goal "..." --verbose --detailed
+
+# Multi-file: trace functions from local imports
+python tracer.py main.py --goal "..." --multifile
 ```
 
 ## Features
@@ -198,7 +201,26 @@ result = executor.execute()
 # - Logic errors (detected by LLM Judge)
 ```
 
-### 4. Benchmark Integration
+### 4. Multi-File Support
+
+With `--multifile`, Tracer detects and parses local imports:
+
+```bash
+python tracer.py main.py --goal "..." --multifile
+```
+
+```
+# Output shows:
+Files parsed: 3 (multifile mode)
+Functions found: 12
+```
+
+- Detects `import` and `from ... import` statements
+- Resolves local modules (not external packages)
+- Wraps functions from all parsed files for tracing
+- Handles circular imports safely
+
+### 5. Benchmark Integration
 
 - **DSDBench**: 1,117 annotated data science debugging examples
 - **SWE-bench**: 323 real-world GitHub issues
@@ -319,6 +341,7 @@ Two independent flags control tracing behavior:
 |------|--------|
 | `--verbose` | Show all judgments (including CORRECT verdicts) with concise explanations |
 | `--detailed` | Judge every statement (not just function calls) |
+| `--multifile` | Parse and trace functions from local imports (multi-file support) |
 
 ```bash
 # Show all judgments for function calls

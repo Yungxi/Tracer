@@ -17,7 +17,7 @@ import json
 import os
 import sys
 
-from parser import parse_file, parse_source
+from parser import parse_file, parse_source, parse_project
 from judge import LLMJudge
 from executor import TracingExecutor
 from reporter import Reporter
@@ -139,7 +139,10 @@ def main():
             print(f"Error: File not found: {args.file}", file=sys.stderr)
             sys.exit(1)
 
-        parsed = parse_file(args.file)
+        if args.multifile:
+            parsed = parse_project(args.file, recursive=True)
+        else:
+            parsed = parse_file(args.file)
         script_name = os.path.basename(args.file)
 
     else:
@@ -171,6 +174,17 @@ def main():
             print(f"\n{'='*60}")
             print(f"Script: {script_name}")
             print(f"Goal: {script_goal}")
+            if args.multifile:
+                # Count unique source files
+                source_files = set()
+                for func in parsed.functions:
+                    if func.source_file:
+                        source_files.add(func.source_file)
+                for cls in parsed.classes:
+                    if cls.source_file:
+                        source_files.add(cls.source_file)
+                print(f"Files parsed: {len(source_files)} (multifile mode)")
+                print(f"Functions found: {len(parsed.functions)}")
             print(f"{'='*60}\n")
 
         # Show code structure
@@ -295,6 +309,12 @@ The LLM judge uses the goal to evaluate if outputs are correct.
         '--detailed', '-d',
         action='store_true',
         help='Judge every statement (not just function calls)'
+    )
+
+    parser.add_argument(
+        '--multifile', '-M',
+        action='store_true',
+        help='Parse and trace functions from local imports (multi-file support)'
     )
 
     return parser.parse_args()
