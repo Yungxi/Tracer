@@ -31,9 +31,10 @@ class Colors:
 class Reporter:
     """Formats and outputs execution trace results."""
 
-    def __init__(self, use_colors: bool = True, output: TextIO = sys.stdout):
+    def __init__(self, use_colors: bool = True, output: TextIO = sys.stdout, verbose: bool = False):
         self.use_colors = use_colors
         self.output = output
+        self.verbose = verbose
 
     def _c(self, text: str, *colors: str) -> str:
         """Apply colors to text if colors are enabled."""
@@ -87,6 +88,24 @@ class Reporter:
                 code_preview += "..."
             self._print(f"{prefix} {line_info} {code_preview}")
 
+            # Show judgment for statements (verbose shows all, otherwise only non-CORRECT)
+            if step.judgment:
+                verdict = step.judgment.verdict
+                show_judgment = self.verbose or verdict != Verdict.CORRECT
+
+                if show_judgment:
+                    if verdict == Verdict.CORRECT:
+                        verdict_str = self._c("CORRECT", Colors.GREEN, Colors.BOLD)
+                    elif verdict == Verdict.INCORRECT:
+                        verdict_str = self._c("INCORRECT", Colors.RED, Colors.BOLD)
+                    else:
+                        verdict_str = self._c(verdict.value.upper(), Colors.YELLOW)
+
+                    confidence = f"{step.judgment.confidence:.0%}"
+                    self._print(f"    {self._c('LLM Judge:', Colors.CYAN)} {verdict_str} ({confidence})")
+                    self._print(f"    {self._c('Reason:', Colors.DIM)} {step.judgment.explanation}")
+                    self._print("")
+
         elif step.step_type == 'function_call':
             self._report_function_call(prefix, line_info, step.function_call)
 
@@ -111,19 +130,22 @@ class Reporter:
         result_str = repr(call.result)[:100]
         self._print(f"    {self._c('Return:', Colors.GREEN)} {result_str}")
 
-        # Judgment
+        # Judgment - show for all verdicts in verbose mode, or only non-CORRECT in normal mode
         if call.judgment:
             verdict = call.judgment.verdict
-            if verdict == Verdict.CORRECT:
-                verdict_str = self._c("CORRECT", Colors.GREEN, Colors.BOLD)
-            elif verdict == Verdict.INCORRECT:
-                verdict_str = self._c("INCORRECT", Colors.RED, Colors.BOLD)
-            else:
-                verdict_str = self._c(verdict.value.upper(), Colors.YELLOW)
+            show_judgment = self.verbose or verdict != Verdict.CORRECT
 
-            confidence = f"{call.judgment.confidence:.0%}"
-            self._print(f"    {self._c('LLM Judge:', Colors.CYAN)} {verdict_str} ({confidence})")
-            self._print(f"    {self._c('Reason:', Colors.DIM)} {call.judgment.explanation}")
+            if show_judgment:
+                if verdict == Verdict.CORRECT:
+                    verdict_str = self._c("CORRECT", Colors.GREEN, Colors.BOLD)
+                elif verdict == Verdict.INCORRECT:
+                    verdict_str = self._c("INCORRECT", Colors.RED, Colors.BOLD)
+                else:
+                    verdict_str = self._c(verdict.value.upper(), Colors.YELLOW)
+
+                confidence = f"{call.judgment.confidence:.0%}"
+                self._print(f"    {self._c('LLM Judge:', Colors.CYAN)} {verdict_str} ({confidence})")
+                self._print(f"    {self._c('Reason:', Colors.DIM)} {call.judgment.explanation}")
 
         if call.error:
             self._print(f"    {self._c('Error:', Colors.RED)} {call.error}")
@@ -188,6 +210,9 @@ class Reporter:
                     else:
                         verdict_icon = self._c("[??]", Colors.YELLOW)
                 self._print(f"  {verdict_icon} {call.name}() -> {repr(call.result)[:50]}")
+                # In verbose mode, show explanation for all judgments
+                if self.verbose and call.judgment:
+                    self._print(f"      {self._c('Reason:', Colors.DIM)} {call.judgment.explanation[:150]}...")
 
         # Final variables
         if result.final_variables:

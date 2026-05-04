@@ -43,6 +43,7 @@ class ExecutionStep:
     result: Any = None
     function_call: Optional[FunctionCall] = None
     variables_snapshot: Dict[str, Any] = field(default_factory=dict)
+    judgment: Optional[JudgmentResult] = None  # For statement-level judgments in verbose mode
 
 
 @dataclass
@@ -72,10 +73,11 @@ class TracingExecutor:
     """Executes Python code with tracing and LLM judgment."""
 
     def __init__(self, parsed_code: ParsedCode, judge: Optional[LLMJudge] = None,
-                 continue_on_error: bool = False):
+                 continue_on_error: bool = False, detailed: bool = False):
         self.parsed_code = parsed_code
         self.judge = judge
         self.continue_on_error = continue_on_error
+        self.detailed = detailed  # When True, judge every statement, not just function calls
         self.steps: List[ExecutionStep] = []
         self.function_calls: List[FunctionCall] = []
         self.errors: List[ErrorInfo] = []  # Collect all errors
@@ -285,11 +287,21 @@ class TracingExecutor:
                 compiled = compile(module, '<traced>', 'exec')
                 exec(compiled, self.globals, self.locals)
 
+                # In detailed mode, judge every statement
+                judgment = None
+                if self.detailed and self.judge:
+                    judgment = self.judge.judge_execution_state(
+                        code_snippet=code,
+                        variables=self._safe_snapshot(),
+                        expected_behavior=f"This statement should contribute to: {self.judge.script_goal}"
+                    )
+
                 self.steps.append(ExecutionStep(
                     lineno=lineno,
                     code=code,
                     step_type='statement',
-                    variables_snapshot=self._safe_snapshot()
+                    variables_snapshot=self._safe_snapshot(),
+                    judgment=judgment
                 ))
 
             except Exception as e:

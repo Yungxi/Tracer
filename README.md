@@ -6,9 +6,9 @@ Tracer can detect 3 types of errors:
 
 1. Syntax Errors - Errors made in code syntax. Tracer will stop and report the first syntax error upon parsing the code and terminate the program. Note that syntax errors further along will not be detected in one pass.
 
-2. Runtime Errors - Errors caught during program execution (E.g. 0 division, KeyError, TypeError). Tracer will find all runtime errors in one pass assuming there are no syntax errors.
+2. Runtime Errors - Errors caught during program execution (E.g. 0 division, KeyError, TypeError). 
 
-3. Logical Errors - Errors in the design and function of the program. Tracer uses an LLM judge to evaluate whether the code given actually achieves the pugrpose of the program as specified by the user. Tracer will find all logical errors in one pass assuming there are no syntax errors.
+3. Logical Errors - Errors in the design and function of the program. Tracer uses an LLM judge to evaluate whether the code given actually achieves the pugrpose of the program as specified by the user. .
 
 ## Architecture
 
@@ -57,15 +57,15 @@ from reporter import Reporter
 # Parse code
 parsed = parse_source(code_string)
 
-# Create judge with goal
-judge = LLMJudge(api_key="sk-...", script_goal="Calculate totals correctly")
+# Create judge with goal (use verbose=True for detailed explanations on all steps)
+judge = LLMJudge(api_key="sk-...", script_goal="Calculate totals correctly", verbose=False)
 
 # Execute with tracing (continue_on_error=True finds ALL bugs)
 executor = TracingExecutor(parsed, judge=judge, continue_on_error=True)
 result = executor.execute()
 
-# Report results
-reporter = Reporter(use_colors=True)
+# Report results (use verbose=True to see judgments for ALL function calls)
+reporter = Reporter(use_colors=True, verbose=False)
 reporter.report_result(result)
 
 # Access errors found
@@ -137,6 +137,12 @@ export OPENAI_API_KEY="sk-your-api-key-here"
 # Demo 1: Tracer finding bugs in pandas code (3 intentional bugs)
 python test_scripts/demo_tracer.py
 
+# Demo 1 with verbose mode (show all judgments including correct ones)
+python test_scripts/demo_tracer.py --verbose
+
+# Demo 1 with detailed mode (judge every statement)
+python test_scripts/demo_tracer.py --detailed --verbose
+
 # Demo 2: Tracer on real DSDBench benchmark instances
 python test_scripts/demo_dsdbench.py --instance 1
 python test_scripts/demo_dsdbench.py --list  # See available instances
@@ -150,6 +156,15 @@ python tracer.py example.py
 
 # Trace with a goal (LLM judges against this)
 python tracer.py example.py --goal "Calculate arithmetic operations correctly"
+
+# Verbose mode: show all judgments (including CORRECT verdicts)
+python tracer.py example.py --goal "..." --verbose
+
+# Detailed mode: judge every statement (not just function calls)
+python tracer.py example.py --goal "..." --detailed
+
+# Combined: judge every statement and show all judgments
+python tracer.py example.py --goal "..." --verbose --detailed
 ```
 
 ## Features
@@ -289,10 +304,43 @@ result = executor.execute()
 judge = LLMJudge(
     api_key="sk-...",
     model="gpt-4o-mini",
-    script_goal="Description of what the code should do"
+    script_goal="Description of what the code should do",
+    verbose=False  # Set True for detailed explanations on ALL steps
 )
 
 # Judge is called automatically by TracingExecutor for each function call
+```
+
+#### Verbose and Detailed Modes
+
+Two independent flags control tracing behavior:
+
+| Flag | Effect |
+|------|--------|
+| `--verbose` | Show all judgments (including CORRECT verdicts) with concise explanations |
+| `--detailed` | Judge every statement (not just function calls) |
+
+```bash
+# Show all judgments for function calls
+python tracer.py script.py --goal "..." --verbose
+
+# Judge every statement (useful for scripts without custom functions)
+python tracer.py script.py --goal "..." --detailed
+
+# Both: judge every statement and show all judgments
+python tracer.py script.py --goal "..." --verbose --detailed
+```
+
+```python
+# Programmatic usage
+judge = LLMJudge(api_key="sk-...", script_goal="Solve linear system", verbose=True)
+reporter = Reporter(use_colors=True, verbose=True)
+executor = TracingExecutor(parsed, judge=judge, detailed=True)
+
+# Output:
+#   [1] L5 A = np.diag([2, 2, 2])
+#       LLM Judge: CORRECT (90%)
+#       Reason: Creates diagonal matrix for the linear system.
 ```
 
 ### ErrorInfo

@@ -147,7 +147,7 @@ def main():
         sys.exit(1)
 
     # Create reporter
-    reporter = Reporter(use_colors=not args.no_color)
+    reporter = Reporter(use_colors=not args.no_color, verbose=args.verbose)
 
     # Check for syntax errors
     if parsed.has_syntax_errors():
@@ -178,12 +178,12 @@ def main():
             reporter.report_parsed_code(parsed)
 
         # Create LLM judge with the script goal
-        judge = LLMJudge(api_key=api_key, model=args.model, script_goal=script_goal)
+        judge = LLMJudge(api_key=api_key, model=args.model, script_goal=script_goal, verbose=args.verbose)
 
         # Create executor and run
         reporter.report_execution_start()
 
-        executor = TracingExecutor(parsed, judge=judge)
+        executor = TracingExecutor(parsed, judge=judge, detailed=args.detailed)
         result = executor.execute()
 
         # Report each step
@@ -288,7 +288,13 @@ The LLM judge uses the goal to evaluate if outputs are correct.
     parser.add_argument(
         '--verbose', '-v',
         action='store_true',
-        help='Verbose output'
+        help='Show all judgments including CORRECT verdicts (with concise explanations)'
+    )
+
+    parser.add_argument(
+        '--detailed', '-d',
+        action='store_true',
+        help='Judge every statement (not just function calls)'
     )
 
     return parser.parse_args()

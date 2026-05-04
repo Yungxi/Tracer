@@ -4,8 +4,13 @@ Tracer Demo - Shows Tracer finding bugs in data science code.
 
 Uses a BIRD/SPIDER-style database question as an example.
 Run with: python test_scripts/demo_tracer.py (from project root)
+
+Options:
+    --verbose    Show all judgments (including CORRECT verdicts)
+    --detailed   Judge every statement (not just function calls)
 """
 
+import argparse
 import os
 import sys
 
@@ -105,6 +110,13 @@ def load_api_key():
 
 def main():
     """Run Tracer on buggy code."""
+    parser = argparse.ArgumentParser(description="Tracer Demo - Find bugs in data science code")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Show all judgments including CORRECT verdicts")
+    parser.add_argument("--detailed", "-d", action="store_true",
+                        help="Judge every statement (not just function calls)")
+    args = parser.parse_args()
+
     from parser import parse_source
     from judge import LLMJudge
     from executor import TracingExecutor
@@ -126,14 +138,20 @@ def main():
     parsed = parse_source(BUGGY_CODE)
 
     # Show structure
-    reporter = Reporter(use_colors=True)
+    reporter = Reporter(use_colors=True, verbose=args.verbose)
     reporter.report_parsed_code(parsed)
 
     # Create judge with goal
     goal = "Find top 3 customers by spending and calculate average order values"
     if api_key:
-        judge = LLMJudge(api_key=api_key, model="gpt-4o-mini", script_goal=goal)
-        print(f"\n[2] LLM Judge goal: {goal}")
+        judge = LLMJudge(api_key=api_key, model="gpt-4o-mini", script_goal=goal, verbose=args.verbose)
+        mode_flags = []
+        if args.verbose:
+            mode_flags.append("verbose")
+        if args.detailed:
+            mode_flags.append("detailed")
+        mode_status = f" ({', '.join(mode_flags)})" if mode_flags else ""
+        print(f"\n[2] LLM Judge goal: {goal}{mode_status}")
     else:
         judge = None
         print("\n[2] LLM Judge disabled (no API key)")
@@ -142,7 +160,7 @@ def main():
     print("\n[3] Executing with Tracer (continue_on_error=True)...")
     reporter.report_execution_start()
 
-    executor = TracingExecutor(parsed, judge=judge, continue_on_error=True)
+    executor = TracingExecutor(parsed, judge=judge, continue_on_error=True, detailed=args.detailed)
     result = executor.execute()
 
     # Report steps
@@ -173,13 +191,10 @@ def main():
     print("=" * 60)
     print("""
 1. get_top_customers(): ascending=True returns LOWEST spenders
-   -> Logic error (LLM Judge should catch)
 
 2. calculate_average(): Divides by total count, not per-customer
-   -> Logic error (LLM Judge should catch)
 
 3. format_output(): Uses 'customer_name' but column is 'name'
-   -> KeyError exception (runtime error)
 """)
 
 

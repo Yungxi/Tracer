@@ -50,13 +50,23 @@ Respond with a JSON object containing:
 
 Be strict but fair. Pay special attention to whether the function's behavior aligns with what the script is supposed to accomplish."""
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", script_goal: Optional[str] = None):
+    SYSTEM_PROMPT_VERBOSE = """You are a code execution judge. Evaluate whether the output is correct given the script's goal.
+
+Respond with a JSON object:
+- "verdict": "correct", "incorrect", or "unknown"
+- "explanation": A brief 1-2 sentence explanation. State what the code does and whether it aligns with the goal. Be concise - no summaries or elaboration.
+- "confidence": 0 to 1
+
+Be strict but fair."""
+
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", script_goal: Optional[str] = None, verbose: bool = False):
         if OpenAI is None:
             raise ImportError("openai package is required. Install with: pip install openai")
 
         self.client = OpenAI(api_key=api_key)
         self.model = model
         self.script_goal = script_goal
+        self.verbose = verbose
 
     def judge_function_call(
         self,
@@ -87,15 +97,18 @@ Be strict but fair. Pay special attention to whether the function's behavior ali
             function_name, function_source, args, kwargs, result, docstring, context
         )
 
+        system_prompt = self.SYSTEM_PROMPT_VERBOSE if self.verbose else self.SYSTEM_PROMPT
+        max_tokens = 1000 if self.verbose else 500
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                max_completion_tokens=500
+                max_completion_tokens=max_tokens
             )
 
             content = response.choices[0].message.content
@@ -136,6 +149,15 @@ Be strict but fair. Pay special attention to whether the function's behavior ali
             except (TypeError, ValueError):
                 var_display[k] = f"<{type(v).__name__}>"
 
+        verbose_instruction = ""
+        if self.verbose:
+            verbose_instruction = """
+Provide a detailed explanation that includes:
+- What the code is doing step by step
+- How the variables changed and why
+- Whether this state is correct and contributes to the script's goal
+Provide this detailed explanation even if the execution state is correct."""
+
         prompt = f"""Evaluate this code execution state:
 
 Code executed:
@@ -148,17 +170,20 @@ Current variables after execution:
 
 {"Expected behavior: " + expected_behavior if expected_behavior else ""}
 
-Is this execution state reasonable and correct?"""
+Is this execution state reasonable and correct?{verbose_instruction}"""
+
+        system_prompt = self.SYSTEM_PROMPT_VERBOSE if self.verbose else self.SYSTEM_PROMPT
+        max_tokens = 1000 if self.verbose else 500
 
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                max_completion_tokens=500
+                max_completion_tokens=max_tokens
             )
 
             content = response.choices[0].message.content
