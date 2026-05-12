@@ -312,7 +312,7 @@ The LLM judge uses the goal to evaluate if outputs are correct.
     )
 
     parser.add_argument(
-        '--multifile', '-M',
+        '--multifile', '-r',
         action='store_true',
         help='Parse and trace functions from local imports (multi-file support)'
     )
