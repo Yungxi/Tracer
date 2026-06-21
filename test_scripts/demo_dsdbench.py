@@ -77,7 +77,7 @@ def list_instances(data_dir: str, limit: int = 10):
 
 def run_tracer_on_instance(instance: dict, api_key: str):
     """Run Tracer on a DSDBench instance. Returns (success, tracer_findings, ground_truth)."""
-    from parser import parse_source
+    from code_parser import parse_source
     from judge import LLMJudge
     from executor import TracingExecutor
     from reporter import Reporter
@@ -231,7 +231,7 @@ def main():
 
     # Import Tracer components
     try:
-        from parser import parse_source
+        from code_parser import parse_source
         from judge import LLMJudge
         from executor import TracingExecutor
         from reporter import Reporter

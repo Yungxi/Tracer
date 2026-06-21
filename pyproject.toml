@@ -44,7 +44,7 @@ tracer = "tracer:main"
 [tool.setuptools]
 py-modules = [
     "tracer",
-    "parser",
+    "code_parser",
     "executor",
     "judge",
     "reporter",

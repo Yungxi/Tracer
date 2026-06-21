@@ -8,7 +8,7 @@ import sys
 
 from executor import ExecutionResult, ExecutionStep, FunctionCall, StopReason, ErrorInfo
 from judge import Verdict
-from parser import ParsedCode
+from code_parser import ParsedCode
 
 
 class Colors:

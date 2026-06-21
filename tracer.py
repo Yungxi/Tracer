@@ -17,7 +17,7 @@ import json
 import os
 import sys
 
-from parser import parse_file, parse_source, parse_project
+from code_parser import parse_file, parse_source, parse_project
 from judge import LLMJudge
 from executor import TracingExecutor
 from reporter import Reporter

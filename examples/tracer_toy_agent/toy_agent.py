@@ -231,7 +231,7 @@ class ToyAgent:
         Tracer's `parser`, `executor`, `judge`, `reporter` modules must be
         importable (add the Tracer directory to `sys.path`).
         """
-        from parser import parse_source        # noqa: E402 -- late import
+        from code_parser import parse_source        # noqa: E402 -- late import
         from executor import TracingExecutor   # noqa: E402
         from judge import LLMJudge             # noqa: E402
         from reporter import Reporter          # noqa: E402

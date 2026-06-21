@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from parser import ParsedCode, FunctionInfo
+from code_parser import ParsedCode, FunctionInfo
 from judge import LLMJudge, JudgmentResult, Verdict
 
 

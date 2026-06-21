@@ -34,7 +34,7 @@ setup(
     # Package discovery
     py_modules=[
         'tracer',
-        'parser',
+        'code_parser',
         'executor',
         'judge',
         'reporter',

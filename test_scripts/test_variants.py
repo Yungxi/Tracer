@@ -25,7 +25,7 @@ TRACER_DIR = HERE.parent
 REPO_ROOT = TRACER_DIR.parent.parent
 sys.path.insert(0, str(TRACER_DIR))
 
-from parser import parse_source                         # noqa: E402
+from code_parser import parse_source                         # noqa: E402
 from executor import TracingExecutor                    # noqa: E402
 from judge import LLMJudge                              # noqa: E402
 from judge_property import PropertyAwareJudge           # noqa: E402

@@ -46,7 +46,7 @@ Tracer can detect 3 types of errors:
 
 | Module | Purpose |
 |--------|---------|
-| **parser.py** | Parses Python code into AST, extracts functions, classes, and statements |
+| **code_parser.py** | Parses Python code into AST, extracts functions, classes, and statements |
 | **executor.py** | Executes code step-by-step, wraps functions to intercept calls, collects errors |
 | **judge.py** | LLM-based judge that evaluates function outputs for correctness |
 | **reporter.py** | Formats and displays execution trace with colors |
@@ -62,7 +62,7 @@ Tracer can detect 3 types of errors:
 **Important:** `tracer.py` is just a CLI convenience wrapper. The actual tracing logic lives in the core modules above. You can use them directly:
 
 ```python
-from parser import parse_source
+from code_parser import parse_source
 from executor import TracingExecutor
 from judge import LLMJudge
 from reporter import Reporter
@@ -90,7 +90,7 @@ for err in result.errors:
 
 ```
 Tracer/
-├── parser.py           # Core: AST-based code parser
+├── code_parser.py      # Core: AST-based code parser
 ├── executor.py         # Core: Step-by-step executor with tracing
 ├── judge.py            # Core: LLM judge for function outputs
 ├── reporter.py         # Core: Colored terminal output

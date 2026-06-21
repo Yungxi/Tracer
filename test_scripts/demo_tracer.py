@@ -117,7 +117,7 @@ def main():
                         help="Judge every statement (not just function calls)")
     args = parser.parse_args()
 
-    from parser import parse_source
+    from code_parser import parse_source
     from judge import LLMJudge
     from executor import TracingExecutor
     from reporter import Reporter
