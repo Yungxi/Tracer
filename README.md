@@ -8,6 +8,9 @@ A Python code tracing tool that executes code step-by-step and uses an LLM to ev
 # Install Tracer
 pip install git+https://github.com/Yungxi/Tracer.git
 
+# Update to latest version (no need to uninstall)
+pip install --upgrade git+https://github.com/Yungxi/Tracer.git
+
 # Set your OpenAI API key
 export OPENAI_API_KEY="sk-your-api-key-here"
 
@@ -123,6 +126,12 @@ Install Tracer directly from GitHub with a single command:
 pip install git+https://github.com/Yungxi/Tracer.git
 ```
 
+To update to the latest version:
+
+```bash
+pip install --upgrade git+https://github.com/Yungxi/Tracer.git
+```
+
 This installs Tracer and its dependencies, making the `tracer` command available system-wide.
 
 ### Option 2: Install for Development
@@ -146,6 +155,20 @@ pip install -r requirements.txt
 ```
 
 Note: With manual installation, you'll need to run `python tracer.py` instead of the `tracer` command.
+
+## Updating
+
+To update Tracer to the latest version:
+
+```bash
+# Update from GitHub (no need to uninstall first)
+pip install --upgrade git+https://github.com/Yungxi/Tracer.git
+
+# Or use the shorthand flag
+pip install -U git+https://github.com/Yungxi/Tracer.git
+```
+
+The `--upgrade` flag automatically handles the update without requiring manual uninstallation.
 
 ## Configuration
 
