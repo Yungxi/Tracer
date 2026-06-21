@@ -137,6 +137,11 @@ class TracingExecutor:
         for import_code in self.parsed_code.imports:
             try:
                 exec(import_code, self.globals, self.locals)
+                # Copy imported modules to globals for type annotation resolution
+                # This allows classes and functions to use imported types in annotations
+                for key, value in list(self.locals.items()):
+                    if key not in self.globals or self.globals[key] != value:
+                        self.globals[key] = value
                 self.steps.append(ExecutionStep(
                     lineno=0,
                     code=import_code,
