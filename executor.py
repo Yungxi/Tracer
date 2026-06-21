@@ -98,9 +98,9 @@ class TracingExecutor:
             # Execute imports first
             self._execute_imports()
 
-            # Define all functions and classes (wrap them for tracing)
-            self._define_functions()
+            # Define classes first, then functions (to handle forward references in type hints)
             self._define_classes()
+            self._define_functions()
 
             # Execute main statements one by one
             self._execute_main_statements()
@@ -169,6 +169,9 @@ class TracingExecutor:
         """Define classes in the execution environment."""
         for class_info in self.parsed_code.classes:
             exec(class_info.source, self.globals, self.locals)
+            # Make sure class is available in globals (not just locals)
+            if class_info.name in self.locals:
+                self.globals[class_info.name] = self.locals[class_info.name]
 
             # Store method sources
             for method in class_info.methods:
