@@ -2,6 +2,19 @@
 
 A Python code tracing tool that executes code step-by-step and uses an LLM to evaluate function outputs for correctness.
 
+## Quick Start
+
+```bash
+# Install Tracer
+pip install git+https://github.com/Yungxi/Tracer.git
+
+# Set your OpenAI API key
+export OPENAI_API_KEY="sk-your-api-key-here"
+
+# Trace any Python file
+tracer your_script.py --goal "Describe what your code should do"
+```
+
 Tracer can detect 3 types of errors:
 
 1. Syntax Errors - Errors made in code syntax. Tracer will stop and report the first syntax error upon parsing the code and terminate the program. Note that syntax errors further along will not be detected in one pass.
@@ -102,11 +115,37 @@ Tracer/
 
 ## Installation
 
+### Option 1: Install from GitHub (Recommended)
+
+Install Tracer directly from GitHub with a single command:
+
+```bash
+pip install git+https://github.com/Yungxi/Tracer.git
+```
+
+This installs Tracer and its dependencies, making the `tracer` command available system-wide.
+
+### Option 2: Install for Development
+
+Clone the repository and install in editable mode:
+
+```bash
+git clone https://github.com/Yungxi/Tracer.git
+cd Tracer
+pip install -e .
+```
+
+This allows you to modify the source code and see changes immediately.
+
+### Option 3: Manual Installation
+
 ```bash
 git clone https://github.com/Yungxi/Tracer.git
 cd Tracer
 pip install -r requirements.txt
 ```
+
+Note: With manual installation, you'll need to run `python tracer.py` instead of the `tracer` command.
 
 ## Configuration
 
@@ -150,25 +189,29 @@ python test_scripts/demo_dsdbench.py --list  # See available instances
 
 ### Use the CLI
 
+After installation via pip, you can use the `tracer` command from anywhere:
+
 ```bash
 # Trace a Python file
-python tracer.py example.py
+tracer example.py
 
 # Trace with a goal (LLM judges against this)
-python tracer.py example.py --goal "Calculate arithmetic operations correctly"
+tracer example.py --goal "Calculate arithmetic operations correctly"
 
 # Verbose mode: show all judgments (including CORRECT verdicts)
-python tracer.py example.py --goal "..." --verbose
+tracer example.py --goal "..." --verbose
 
 # Detailed mode: judge every statement (not just function calls)
-python tracer.py example.py --goal "..." --detailed
+tracer example.py --goal "..." --detailed
 
 # Combined: judge every statement and show all judgments
-python tracer.py example.py --goal "..." --verbose --detailed
+tracer example.py --goal "..." --verbose --detailed
 
 # Multi-file: trace functions from local imports
-python tracer.py main.py --goal "..." --multifile
+tracer main.py --goal "..." --multifile
 ```
+
+**Note:** If you installed manually (Option 3), use `python tracer.py` instead of `tracer`.
 
 ## Features
 

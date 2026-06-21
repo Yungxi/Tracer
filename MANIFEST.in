@@ -1,0 +1,19 @@
+# Include documentation
+include README.md
+include LICENSE
+
+# Include configuration templates
+include config.example.json
+
+# Include requirements
+include requirements.txt
+
+# Exclude development and test files
+exclude .gitignore
+exclude config.json
+recursive-exclude test_scripts *
+recursive-exclude examples *
+recursive-exclude __pycache__ *
+recursive-exclude * *.pyc
+recursive-exclude * *.pyo
+recursive-exclude * .DS_Store
