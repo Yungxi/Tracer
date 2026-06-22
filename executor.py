@@ -3,6 +3,7 @@ Code Executor - Traces and executes Python code with function call interception.
 """
 
 import ast
+import os
 import sys
 import traceback
 from dataclasses import dataclass, field
@@ -131,6 +132,13 @@ class TracingExecutor:
             '__name__': '__main__',
         }
         self.locals = {}
+
+        # Add source file's directory to sys.path for local imports
+        if self.parsed_code.source_file:
+            import sys
+            source_dir = os.path.dirname(os.path.abspath(self.parsed_code.source_file))
+            if source_dir not in sys.path:
+                sys.path.insert(0, source_dir)
 
     def _execute_imports(self):
         """Execute import statements."""

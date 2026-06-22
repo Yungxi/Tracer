@@ -53,6 +53,7 @@ class ParsedCode:
     main_source: str
     imports: List[str]
     syntax_errors: List[SyntaxErrorInfo] = field(default_factory=list)
+    source_file: Optional[str] = None  # Track the main source file path
 
     def has_syntax_errors(self) -> bool:
         return len(self.syntax_errors) > 0
@@ -184,7 +185,8 @@ def parse_file(filepath: str) -> ParsedCode:
     parser = CodeParser(source)
     parsed = parser.parse()
 
-    # Tag all functions/classes with their source file
+    # Tag the parsed code and all functions/classes with their source file
+    parsed.source_file = os.path.abspath(filepath)
     for func in parsed.functions:
         func.source_file = filepath
     for cls in parsed.classes:
@@ -329,5 +331,6 @@ def parse_project(filepath: str, recursive: bool = True) -> ParsedCode:
         main_statements=main_parsed.main_statements,
         main_source=main_parsed.main_source,
         imports=all_imports,
-        syntax_errors=main_parsed.syntax_errors
+        syntax_errors=main_parsed.syntax_errors,
+        source_file=filepath  # Use the main entry file path
     )
