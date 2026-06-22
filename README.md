@@ -286,7 +286,51 @@ Functions found: 12
 - Wraps functions from all parsed files for tracing
 - Handles circular imports safely
 
-### 5. Benchmark Integration
+### 5. Important Limitations
+
+#### Scripts with `if __name__ == '__main__':` and argparse
+
+If your script uses `argparse` or processes command-line arguments in a `if __name__ == '__main__':` block, it will conflict with tracer's own arguments:
+
+```python
+# This will cause conflicts with tracer
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-n', '--num', type=int)
+    args = parser.parse_args()
+```
+
+**Workaround options:**
+
+1. **Extract logic into functions** (Recommended):
+   ```python
+   def main(num_samples, config):
+       # Your logic here
+       pass
+
+   if __name__ == '__main__':
+       parser = argparse.ArgumentParser()
+       parser.add_argument('-n', '--num', type=int)
+       args = parser.parse_args()
+       main(args.num, args.config)
+   ```
+   Then trace a test file that calls `main()` directly with hardcoded arguments.
+
+2. **Temporarily comment out the argparse block** when tracing.
+
+3. **Use tracer programmatically** instead of the CLI:
+   ```python
+   from code_parser import parse_file
+   from executor import TracingExecutor
+   from judge import LLMJudge
+
+   parsed = parse_file("your_script.py")
+   judge = LLMJudge(api_key="sk-...", script_goal="Your goal")
+   executor = TracingExecutor(parsed, judge=judge)
+   result = executor.execute()
+   ```
+
+### 6. Benchmark Integration
 
 - **DSDBench**: 1,117 annotated data science debugging examples
 - **SWE-bench**: 323 real-world GitHub issues
